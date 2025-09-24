@@ -30,7 +30,7 @@ EXERCISE_POINTS = {
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
 TEST_WEIGHT = 0.50     # 50% pour les tests
-MANUAL_WEIGHT = 0.25   # 25% accordés automatiquement
+MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires
 
 PYTHON_EXE = "python"
 TIMEOUT_PER_RUN = 20    # secondes pour tenter d'exécuter un exercice
