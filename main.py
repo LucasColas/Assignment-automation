@@ -8,7 +8,7 @@ import py_compile
 from datetime import datetime
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP2-INF1005D_11L-776039"            # dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
 TEST_FILES = [                              # noms des fichiers de test (doivent exister dans PATH_TEST_CASES_DIR)
     "exercice1_tests.py",
@@ -16,16 +16,15 @@ TEST_FILES = [                              # noms des fichiers de test (doivent
     "exercice3_tests.py",
     "exercice4_tests.py",
     "exercice5_tests.py",
-    "exercice6_tests.py",
 ]
+
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 2,
-    2: 3,
-    3: 3,
+    1: 4,
+    2: 4,
+    3: 4,
     4: 4,
     5: 4,
-    6: 4,
 }
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
