@@ -37,7 +37,7 @@ TIMEOUT_PER_TEST = 30   # secondes pour exécuter pytest sur un test
 CLEANUP_WORKDIR = False  # False pour garder les dossiers temporaires (débogage)
 
 _STDIN_NEWLINES = 1
-# ------------------------------------
+# ----- End Configuration -----
 
 def unzip_folder(zip_path, extract_to):
     os.makedirs(extract_to, exist_ok=True)
@@ -50,6 +50,26 @@ def copy_file(src, dest_dir):
 
 def safe_name(s):
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in s)
+
+
+def find_first_python_folder(parentFolder):
+    """
+    Parcours récursif pour trouver le premier dossier contenant un fichier .py.
+    Retourne le chemin du dossier contenant le .py ou None si aucun trouvé.
+    Ignore les dossiers contenant 'MAC' dans le chemin (convention macOS de zip).
+    """
+    try:
+        for item in os.listdir(parentFolder):
+            itemPath = os.path.join(parentFolder, item)
+            if os.path.isdir(itemPath) and ("MAC" not in itemPath):
+                pythonFolder = find_first_python_folder(itemPath)
+                if pythonFolder:
+                    return pythonFolder
+            elif item.endswith(".py"):
+                return parentFolder
+    except Exception:
+        return None
+    return None
 
 def pytest_available(python_exe=PYTHON_EXE):
     try:
@@ -237,16 +257,22 @@ def main():
             log_lines.append(f"Dossier de travail temporaire créé : {workdir}\n")
 
             # 2) copier les fichiers .py de l'étudiant dans workdir
+            # Cherche éventuellement un sous-dossier contenant les .py (cas où le zip contient un dossier racine)
             student_py_files = []
-            for item in os.listdir(extract_to):
-                if item.endswith(".py"):
-                    src = os.path.join(extract_to, item)
-                    try:
-                        copy_file(src, workdir)
-                        student_py_files.append(item)
-                        log_lines.append(f"Copié fichier étudiant : {item}\n")
-                    except Exception as e:
-                        log_lines.append(f"Échec copie {src} -> {workdir} : {e}\n")
+            student_code_folder = find_first_python_folder(extract_to) or extract_to
+            log_lines.append(f"Dossier de code étudiant choisi pour la copie : {student_code_folder}\n")
+            try:
+                for item in os.listdir(student_code_folder):
+                    if item.endswith(".py"):
+                        src = os.path.join(student_code_folder, item)
+                        try:
+                            copy_file(src, workdir)
+                            student_py_files.append(item)
+                            log_lines.append(f"Copié fichier étudiant : {item}\n")
+                        except Exception as e:
+                            log_lines.append(f"Échec copie {src} -> {workdir} : {e}\n")
+            except Exception as e:
+                log_lines.append(f"Échec lecture du dossier étudiant {student_code_folder} : {e}\n")
 
             # 3) copier les fichiers de tests dans workdir
             for testfile in TEST_FILES:
@@ -263,11 +289,11 @@ def main():
             if os.path.exists(utils_file):
                 copy_file(utils_file, workdir)
 
-            # 4) Pour chaque exercice 1..6 : vérification exécution + tests
+            # 4) Pour chaque exercice 1..n : vérification exécution + tests
             total_score = 0.0
             total_max = 0.0
 
-            for ex_num in range(1, 7):
+            for ex_num in range(1, len(TEST_FILES) + 1):
                 ex_name = f"exercice{ex_num}.py"
                 test_name = TEST_FILES[ex_num - 1] if ex_num - 1 < len(TEST_FILES) else None
                 max_points = EXERCISE_POINTS.get(ex_num, 0)
