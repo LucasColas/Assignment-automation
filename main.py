@@ -230,7 +230,7 @@ def main():
         if not os.path.isdir(folder_path):
             continue
 
-        # itération deuxième niveau ; on conserve ta structure originale
+        
         for folder2 in os.listdir(folder_path):
             if not folder2.endswith(".zip"):
                 continue
@@ -252,42 +252,38 @@ def main():
             grade_lines.append(f"Correction de la soumission : {folder2}\n")
             log_lines.append(f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n")
 
-            # créer un dossier de travail temporaire pour l'exécution (isolé)
-            workdir = tempfile.mkdtemp(prefix=f"run_{safe_name(folder)}_")
-            log_lines.append(f"Dossier de travail temporaire créé : {workdir}\n")
-
-            # 2) copier les fichiers .py de l'étudiant dans workdir
+            # Ne plus copier les fichiers de l'étudiant dans un dossier commun.
+            # On exécute désormais les tests directement dans le dossier de l'étudiant.
             # Cherche éventuellement un sous-dossier contenant les .py (cas où le zip contient un dossier racine)
             student_py_files = []
             student_code_folder = find_first_python_folder(extract_to) or extract_to
-            log_lines.append(f"Dossier de code étudiant choisi pour la copie : {student_code_folder}\n")
+            log_lines.append(f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n")
             try:
                 for item in os.listdir(student_code_folder):
                     if item.endswith(".py"):
-                        src = os.path.join(student_code_folder, item)
-                        try:
-                            copy_file(src, workdir)
-                            student_py_files.append(item)
-                            log_lines.append(f"Copié fichier étudiant : {item}\n")
-                        except Exception as e:
-                            log_lines.append(f"Échec copie {src} -> {workdir} : {e}\n")
+                        # On enregistre la présence du fichier, sans le copier ailleurs
+                        student_py_files.append(item)
+                        log_lines.append(f"Trouvé fichier étudiant : {item}\n")
             except Exception as e:
                 log_lines.append(f"Échec lecture du dossier étudiant {student_code_folder} : {e}\n")
 
-            # 3) copier les fichiers de tests dans workdir
+            # 3) copier les fichiers de tests dans le dossier de l'étudiant et exécuter là-bas
             for testfile in TEST_FILES:
                 test_src = os.path.join(path_test_cases, testfile)
                 if os.path.exists(test_src):
                     try:
-                        copy_file(test_src, workdir)
-                        log_lines.append(f"Copié fichier de test : {testfile}\n")
+                        copy_file(test_src, student_code_folder)
+                        log_lines.append(f"Copié fichier de test dans le dossier étudiant : {testfile}\n")
                     except Exception as e:
-                        log_lines.append(f"Échec copie test {testfile} : {e}\n")
+                        log_lines.append(f"Échec copie test {testfile} -> {student_code_folder} : {e}\n")
                 else:
                     log_lines.append(f"Fichier de test manquant (non trouvé dans {path_test_cases}) : {testfile}\n")
-            # ajouter le fichier utils s'il existe
+            # ajouter le fichier utils s'il existe (dans le dossier de l'étudiant)
             if os.path.exists(utils_file):
-                copy_file(utils_file, workdir)
+                try:
+                    copy_file(utils_file, student_code_folder)
+                except Exception as e:
+                    log_lines.append(f"Échec copie utils -> {student_code_folder} : {e}\n")
 
             # 4) Pour chaque exercice 1..n : vérification exécution + tests
             total_score = 0.0
@@ -314,8 +310,8 @@ def main():
                     grade_lines.append(f"   exécution: {run_awarded:.2f}, tests: {test_awarded:.2f}, manuel: {manual_awarded:.2f} => {awarded:.2f}/{max_points}\n")
                     continue
 
-                # 4.a) Vérification syntaxe / exécution tolérante input
-                script_path = os.path.join(workdir, ex_name)
+                # 4.a) Vérification syntaxe / exécution tolérante input (dans le dossier de l'étudiant)
+                script_path = os.path.join(student_code_folder, ex_name)
                 run_res = run_student_script_syntax_and_input_tolerant(script_path, timeout=TIMEOUT_PER_RUN)
                 if run_res["ran_ok"]:
                     run_awarded = RUN_WEIGHT * max_points
@@ -328,9 +324,9 @@ def main():
                 # 4.b) Exécuter les tests (si le fichier de test existe)
                 test_awarded = 0.0
                 if test_name:
-                    test_path_in_workdir = os.path.join(workdir, test_name)
-                    if os.path.exists(test_path_in_workdir):
-                        test_res = run_pytest_on_testfile(test_name, cwd=workdir, timeout=TIMEOUT_PER_TEST)
+                    test_path_in_student = os.path.join(student_code_folder, test_name)
+                    if os.path.exists(test_path_in_student):
+                        test_res = run_pytest_on_testfile(test_name, cwd=student_code_folder, timeout=TIMEOUT_PER_TEST)
                         log_lines.append(f"[EX{ex_num}] Sortie stdout des tests :\n{test_res['stdout']}\n")
                         log_lines.append(f"[EX{ex_num}] Sortie stderr des tests :\n{test_res['stderr']}\n")
                         # calculer fraction de tests passés
@@ -355,7 +351,7 @@ def main():
                 # 4.d) Somme pour cet exercice
                 awarded = run_awarded + test_awarded + manual_awarded
                 total_score += awarded
-                grade_lines.append(f"\n - Qualité du code et commentaires du code (attribuée) : {manual_awarded:.2f}")
+                grade_lines.append(f"\n - Qualité du code et commentaires du code (attribué) : {manual_awarded:.2f}")
                 grade_lines.append(f"\n => Exercice {ex_num} total attribué : {awarded:.2f}/{max_points}\n")
 
             # synthèse globale
@@ -373,14 +369,8 @@ def main():
             except Exception as e:
                 print(f"Échec écriture log/note dans {extract_to} : {e}")
 
-            # 6) nettoyage du dossier de travail si demandé
-            if CLEANUP_WORKDIR:
-                try:
-                    shutil.rmtree(workdir)
-                except Exception:
-                    pass
-            else:
-                print(f"Dossier de travail conservé pour inspection : {workdir}")
+            # 6) Pas de dossier de travail temporaire créé : les tests ont été exécutés
+            #    directement dans le dossier de l'étudiant (`student_code_folder`).
             
 
 # Si exécution directe :
