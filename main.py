@@ -7,6 +7,11 @@ import re
 import py_compile
 from datetime import datetime
 
+# TODO :
+# Add csv exports
+# pour obtenir les matricules (s'ils ne sont pas disponibles) ==>
+# associer les noms de dossiers avec les matricules en regardant sur moodle
+
 # ----- Configuration: edit these -----
 PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
@@ -369,8 +374,7 @@ def main():
             except Exception as e:
                 print(f"Échec écriture log/note dans {extract_to} : {e}")
 
-            # 6) Pas de dossier de travail temporaire créé : les tests ont été exécutés
-            #    directement dans le dossier de l'étudiant (`student_code_folder`).
+            
             
 
 # Si exécution directe :
