@@ -6,6 +6,7 @@ import tempfile
 import re
 import py_compile
 from datetime import datetime
+import csv
 
 # TODO :
 # Add csv exports
@@ -31,6 +32,14 @@ EXERCISE_POINTS = {
     4: 4,
     5: 4,
 }
+
+CSV_FILE = "grades.csv" 
+
+# Pour avoir les matricules selon les noms des groupes 
+GROUP_NUMBER = {
+    "A": (2392964, 2392965),
+}
+
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
 TEST_WEIGHT = 0.50     # 50% pour les tests
@@ -217,6 +226,15 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
         return {"ok": False, "returncode": None, "stdout": "", "stderr": f"Failed to run tests: {e}",
                 "passed": 0, "failed": 0, "skipped": 0, "total": 0}
 
+
+def find_student_ids(folder_name : str):
+    """
+    Extrait les numéros (matricules) d'un nom de dossier.
+    Retourne une liste d'entiers.
+    """
+    numbers = re.findall(r'(\d{7})', folder_name)
+    return [int(num) for num in numbers]
+
 # ---------------- main ----------------
 def main():
     path_assignments = PATH_ASSIGNMENTS
@@ -246,7 +264,7 @@ def main():
             # 1) décompression
             try:
                 unzip_folder(zip_file_path, extract_to)
-                print(f"Décompressé {zip_file_path} -> {extract_to}")
+                #print(f"Décompressé {zip_file_path} -> {extract_to}")
             except Exception as e:
                 print(f"Échec de la décompression {zip_file_path} : {e}")
                 continue
@@ -257,7 +275,7 @@ def main():
             grade_lines.append(f"Correction de la soumission : {folder2}\n")
             log_lines.append(f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n")
 
-            # Ne plus copier les fichiers de l'étudiant dans un dossier commun.
+            
             # On exécute désormais les tests directement dans le dossier de l'étudiant.
             # Cherche éventuellement un sous-dossier contenant les .py (cas où le zip contient un dossier racine)
             student_py_files = []
@@ -370,9 +388,23 @@ def main():
                     f.write("\n".join(log_lines))
                 with open(grade_path, "w", encoding="utf-8") as f:
                     f.write("\n".join(grade_lines))
-                print(f"Écrit log -> {log_path}, note -> {grade_path}")
+                #print(f"Écrit log -> {log_path}, note -> {grade_path}")
             except Exception as e:
                 print(f"Échec écriture log/note dans {extract_to} : {e}")
+
+            # écrire dans le CSV (uniquement la note finale)
+            try:
+                with open(CSV_FILE, "a", newline='', encoding="utf-8") as csvfile:
+                    csvwriter = csv.writer(csvfile)
+                    student_ids = find_student_ids(folder2)
+                    for student_id in student_ids:
+                        csvwriter.writerow([student_id, f"{total_score:.2f}"])
+                    if not student_ids:
+                        print(f"Aucun numéro d'étudiant trouvé dans le nom du dossier {folder2} pour le CSV.")
+            except Exception as e:
+                print(f"Échec écriture dans le CSV {CSV_FILE} : {e}")
+            
+
 
             
             
