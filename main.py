@@ -14,36 +14,34 @@ import csv
 # associer les noms de dossiers avec les matricules en regardant sur moodle
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP4-INF1005D_11L-776047"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
-TEST_FILES = [                              # noms des fichiers de test (doivent exister dans PATH_TEST_CASES_DIR)
-    "exercice1_tests.py",
-    "exercice2_tests.py",
-    "exercice3_tests.py",
-    "exercice4_tests.py",
-    "exercice5_tests.py",
-]
 
+TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
+TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
+print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 4,
-    2: 4,
+    1: 2,
+    2: 3,
     3: 4,
-    4: 4,
-    5: 4,
+    4: 3,
+    5: 3,
+    6: 3,
+    7: 2,
 }
 
 CSV_FILE = "grades.csv" 
 
 # Pour avoir les matricules selon les noms des groupes 
 GROUP_NUMBER = {
-    "A": (2392964, 2392965),
+    
 }
 
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
 TEST_WEIGHT = 0.50     # 50% pour les tests
-MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires
+MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires. Accordés par défaut 
 
 PYTHON_EXE = "python"
 TIMEOUT_PER_RUN = 20    # secondes pour tenter d'exécuter un exercice
@@ -264,7 +262,7 @@ def main():
             # 1) décompression
             try:
                 unzip_folder(zip_file_path, extract_to)
-                #print(f"Décompressé {zip_file_path} -> {extract_to}")
+                print(f"Décompressé {zip_file_path} -> {extract_to}")
             except Exception as e:
                 print(f"Échec de la décompression {zip_file_path} : {e}")
                 continue
@@ -277,7 +275,7 @@ def main():
 
             
             # On exécute désormais les tests directement dans le dossier de l'étudiant.
-            # Cherche éventuellement un sous-dossier contenant les .py (cas où le zip contient un dossier racine)
+            # Cherche éventuellement un sous-dossier contenant les .py (cas où le dossier dézipé contient un dossier racine)
             student_py_files = []
             student_code_folder = find_first_python_folder(extract_to) or extract_to
             log_lines.append(f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n")
@@ -305,6 +303,7 @@ def main():
             if os.path.exists(utils_file):
                 try:
                     copy_file(utils_file, student_code_folder)
+                    log_lines.append(f"Copié utils_ne_pas_supprimer.py dans le dossier étudiant.\n")
                 except Exception as e:
                     log_lines.append(f"Échec copie utils -> {student_code_folder} : {e}\n")
 
