@@ -8,13 +8,9 @@ import py_compile
 from datetime import datetime
 import csv
 
-# TODO :
-# Add csv exports
-# pour obtenir les matricules (s'ils ne sont pas disponibles) ==>
-# associer les noms de dossiers avec les matricules en regardant sur moodle
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP5-INF1005D_11L-776052"            # dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP6-INF1005D_11L-776056"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
 
 TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
@@ -22,8 +18,9 @@ TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
 print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 12,
-    2: 8,
+    1: 10,
+    2: 5,
+    3: 5,
 }
 
 DATA_FOLDER = "data"  # dossier contenant les fichiers de données nécessaires aux tests / scripts python
