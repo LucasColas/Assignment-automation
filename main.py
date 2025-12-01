@@ -7,6 +7,7 @@ import re
 import py_compile
 from datetime import datetime
 import csv
+import sys
 
 
 # ----- Configuration: edit these -----
@@ -25,7 +26,7 @@ EXERCISE_POINTS = {
 
 DATA_FOLDER = "data"  # dossier contenant les fichiers de données nécessaires aux tests / scripts python
 
-CSV_FILE = "grades.csv" 
+CSV_FILE = "grades_TP6.csv" 
 
 # Pour avoir les matricules selon les noms des groupes 
 GROUP_NUMBER = {
@@ -37,7 +38,7 @@ RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
 TEST_WEIGHT = 0.50     # 50% pour les tests
 MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires. Accordés par défaut 
 
-PYTHON_EXE = "python"
+PYTHON_EXE = sys.executable
 TIMEOUT_PER_RUN = 20    # secondes pour tenter d'exécuter un exercice
 TIMEOUT_PER_TEST = 30   # secondes pour exécuter pytest sur un test
 CLEANUP_WORKDIR = False  # False pour garder les dossiers temporaires (débogage)
