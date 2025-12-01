@@ -14,7 +14,7 @@ import csv
 # associer les noms de dossiers avec les matricules en regardant sur moodle
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP4-INF1005D_11L-776047"            # dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP5-INF1005D_11L-776052"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
 
 TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
@@ -22,14 +22,11 @@ TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
 print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 2,
-    2: 3,
-    3: 4,
-    4: 3,
-    5: 3,
-    6: 3,
-    7: 2,
+    1: 12,
+    2: 8,
 }
+
+DATA_FOLDER = "data"  # dossier contenant les fichiers de données nécessaires aux tests / scripts python
 
 CSV_FILE = "grades.csv" 
 
@@ -307,6 +304,21 @@ def main():
                 except Exception as e:
                     log_lines.append(f"Échec copie utils -> {student_code_folder} : {e}\n")
 
+            # ajout les dossiers ou fichiers de données nécessaires
+            if os.path.exists(DATA_FOLDER):
+                
+                for data in os.listdir(DATA_FOLDER):
+                    data_src = os.path.join(DATA_FOLDER, data)
+                    try:
+                        if os.path.isdir(data_src):
+                            shutil.copytree(data_src, os.path.join(student_code_folder, data), dirs_exist_ok=True)
+                        else:
+                            #os.makedirs(data_dest, exist_ok=True)
+                            shutil.copy2(data_src, os.path.join(student_code_folder, data))
+                        log_lines.append(f"Copié donnée nécessaire {data} dans le dossier étudiant.\n")
+                    except Exception as e:
+                        log_lines.append(f"Échec copie donnée {data} -> {student_code_folder} : {e}\n")
+
             # 4) Pour chaque exercice 1..n : vérification exécution + tests
             total_score = 0.0
             total_max = 0.0
@@ -402,6 +414,8 @@ def main():
                         print(f"Aucun numéro d'étudiant trouvé dans le nom du dossier {folder2} pour le CSV.")
             except Exception as e:
                 print(f"Échec écriture dans le CSV {CSV_FILE} : {e}")
+
+    print("Correction terminée.")
             
 
 
