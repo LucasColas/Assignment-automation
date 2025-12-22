@@ -11,24 +11,27 @@ import sys
 
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP6-INF1005D_11L-776056"            # dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
 
 TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
 TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
-print("Fichiers de test détectés : ", TEST_FILES)
+#print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 10,
-    2: 5,
-    3: 5,
+    1: 4,
+    2: 4,
+    3: 4,
+    4: 4,
+    5: 4,
 }
 
-DATA_FOLDER = "data"  # dossier contenant les fichiers de données nécessaires aux tests / scripts python
+DATA_FOLDER = "data"  # dossier contenant les fichiers de données supplémentaires (si nécessaires) aux tests / scripts python
 
-CSV_FILE = "grades_TP6.csv" 
+CSV_FILE = "notes_TP3.csv" 
 
-# Pour avoir les matricules selon les noms des groupes 
+# Pour avoir les matricules selon les noms des groupes (optionnel)
+# Utile (pour le CSV) si on on a besoin de toujours associer une remise à un étudiant même si le zip n'inclut pas son numéro
 GROUP_NUMBER = {
     
 }
@@ -44,7 +47,11 @@ TIMEOUT_PER_TEST = 30   # secondes pour exécuter pytest sur un test
 CLEANUP_WORKDIR = False  # False pour garder les dossiers temporaires (débogage)
 
 _STDIN_NEWLINES = 1
+
 # ----- End Configuration -----
+
+
+
 
 def unzip_folder(zip_path, extract_to):
     os.makedirs(extract_to, exist_ok=True)
