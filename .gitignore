@@ -209,3 +209,7 @@ __marimo__/
 
 INF1005D*/
 test_cases/*
+
+*.csv
+
+data/*

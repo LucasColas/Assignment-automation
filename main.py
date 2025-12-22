@@ -6,18 +6,17 @@ import tempfile
 import re
 import py_compile
 from datetime import datetime
+import csv
+import sys
+
 
 # ----- Configuration: edit these -----
 PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
-TEST_FILES = [                              # noms des fichiers de test (doivent exister dans PATH_TEST_CASES_DIR)
-    "exercice1_tests.py",
-    "exercice2_tests.py",
-    "exercice3_tests.py",
-    "exercice4_tests.py",
-    "exercice5_tests.py",
-]
 
+TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
+TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
+#print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
     1: 4,
@@ -26,18 +25,33 @@ EXERCISE_POINTS = {
     4: 4,
     5: 4,
 }
+
+DATA_FOLDER = "data"  # dossier contenant les fichiers de données supplémentaires (si nécessaires) aux tests / scripts python
+
+CSV_FILE = "notes_TP3.csv" 
+
+# Pour avoir les matricules selon les noms des groupes (optionnel)
+# Utile (pour le CSV) si on on a besoin de toujours associer une remise à un étudiant même si le zip n'inclut pas son numéro
+GROUP_NUMBER = {
+    
+}
+
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
 TEST_WEIGHT = 0.50     # 50% pour les tests
-MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires
+MANUAL_WEIGHT = 0.25   # 25% accordés pour la qualité du code et commentaires. Accordés par défaut 
 
-PYTHON_EXE = "python"
+PYTHON_EXE = sys.executable
 TIMEOUT_PER_RUN = 20    # secondes pour tenter d'exécuter un exercice
 TIMEOUT_PER_TEST = 30   # secondes pour exécuter pytest sur un test
 CLEANUP_WORKDIR = False  # False pour garder les dossiers temporaires (débogage)
 
 _STDIN_NEWLINES = 1
-# ------------------------------------
+
+# ----- End Configuration -----
+
+
+
 
 def unzip_folder(zip_path, extract_to):
     os.makedirs(extract_to, exist_ok=True)
@@ -50,6 +64,26 @@ def copy_file(src, dest_dir):
 
 def safe_name(s):
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in s)
+
+
+def find_first_python_folder(parentFolder):
+    """
+    Parcours récursif pour trouver le premier dossier contenant un fichier .py.
+    Retourne le chemin du dossier contenant le .py ou None si aucun trouvé.
+    Ignore les dossiers contenant 'MAC' dans le chemin (convention macOS de zip).
+    """
+    try:
+        for item in os.listdir(parentFolder):
+            itemPath = os.path.join(parentFolder, item)
+            if os.path.isdir(itemPath) and ("MAC" not in itemPath):
+                pythonFolder = find_first_python_folder(itemPath)
+                if pythonFolder:
+                    return pythonFolder
+            elif item.endswith(".py"):
+                return parentFolder
+    except Exception:
+        return None
+    return None
 
 def pytest_available(python_exe=PYTHON_EXE):
     try:
@@ -192,6 +226,15 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
         return {"ok": False, "returncode": None, "stdout": "", "stderr": f"Failed to run tests: {e}",
                 "passed": 0, "failed": 0, "skipped": 0, "total": 0}
 
+
+def find_student_ids(folder_name : str):
+    """
+    Extrait les numéros (matricules) d'un nom de dossier.
+    Retourne une liste d'entiers.
+    """
+    numbers = re.findall(r'(\d{7})', folder_name)
+    return [int(num) for num in numbers]
+
 # ---------------- main ----------------
 def main():
     path_assignments = PATH_ASSIGNMENTS
@@ -210,7 +253,7 @@ def main():
         if not os.path.isdir(folder_path):
             continue
 
-        # itération deuxième niveau ; on conserve ta structure originale
+        
         for folder2 in os.listdir(folder_path):
             if not folder2.endswith(".zip"):
                 continue
@@ -232,42 +275,60 @@ def main():
             grade_lines.append(f"Correction de la soumission : {folder2}\n")
             log_lines.append(f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n")
 
-            # créer un dossier de travail temporaire pour l'exécution (isolé)
-            workdir = tempfile.mkdtemp(prefix=f"run_{safe_name(folder)}_")
-            log_lines.append(f"Dossier de travail temporaire créé : {workdir}\n")
-
-            # 2) copier les fichiers .py de l'étudiant dans workdir
+            
+            # On exécute désormais les tests directement dans le dossier de l'étudiant.
+            # Cherche éventuellement un sous-dossier contenant les .py (cas où le dossier dézipé contient un dossier racine)
             student_py_files = []
-            for item in os.listdir(extract_to):
-                if item.endswith(".py"):
-                    src = os.path.join(extract_to, item)
-                    try:
-                        copy_file(src, workdir)
+            student_code_folder = find_first_python_folder(extract_to) or extract_to
+            log_lines.append(f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n")
+            try:
+                for item in os.listdir(student_code_folder):
+                    if item.endswith(".py"):
+                        # On enregistre la présence du fichier, sans le copier ailleurs
                         student_py_files.append(item)
-                        log_lines.append(f"Copié fichier étudiant : {item}\n")
-                    except Exception as e:
-                        log_lines.append(f"Échec copie {src} -> {workdir} : {e}\n")
+                        log_lines.append(f"Trouvé fichier étudiant : {item}\n")
+            except Exception as e:
+                log_lines.append(f"Échec lecture du dossier étudiant {student_code_folder} : {e}\n")
 
-            # 3) copier les fichiers de tests dans workdir
+            # 3) copier les fichiers de tests dans le dossier de l'étudiant et exécuter là-bas
             for testfile in TEST_FILES:
                 test_src = os.path.join(path_test_cases, testfile)
                 if os.path.exists(test_src):
                     try:
-                        copy_file(test_src, workdir)
-                        log_lines.append(f"Copié fichier de test : {testfile}\n")
+                        copy_file(test_src, student_code_folder)
+                        log_lines.append(f"Copié fichier de test dans le dossier étudiant : {testfile}\n")
                     except Exception as e:
-                        log_lines.append(f"Échec copie test {testfile} : {e}\n")
+                        log_lines.append(f"Échec copie test {testfile} -> {student_code_folder} : {e}\n")
                 else:
                     log_lines.append(f"Fichier de test manquant (non trouvé dans {path_test_cases}) : {testfile}\n")
-            # ajouter le fichier utils s'il existe
+            # ajouter le fichier utils s'il existe (dans le dossier de l'étudiant)
             if os.path.exists(utils_file):
-                copy_file(utils_file, workdir)
+                try:
+                    copy_file(utils_file, student_code_folder)
+                    log_lines.append(f"Copié utils_ne_pas_supprimer.py dans le dossier étudiant.\n")
+                except Exception as e:
+                    log_lines.append(f"Échec copie utils -> {student_code_folder} : {e}\n")
 
-            # 4) Pour chaque exercice 1..6 : vérification exécution + tests
+            # ajout les dossiers ou fichiers de données nécessaires
+            if os.path.exists(DATA_FOLDER):
+                
+                for data in os.listdir(DATA_FOLDER):
+                    data_src = os.path.join(DATA_FOLDER, data)
+                    try:
+                        if os.path.isdir(data_src):
+                            shutil.copytree(data_src, os.path.join(student_code_folder, data), dirs_exist_ok=True)
+                        else:
+                            #os.makedirs(data_dest, exist_ok=True)
+                            shutil.copy2(data_src, os.path.join(student_code_folder, data))
+                        log_lines.append(f"Copié donnée nécessaire {data} dans le dossier étudiant.\n")
+                    except Exception as e:
+                        log_lines.append(f"Échec copie donnée {data} -> {student_code_folder} : {e}\n")
+
+            # 4) Pour chaque exercice 1..n : vérification exécution + tests
             total_score = 0.0
             total_max = 0.0
 
-            for ex_num in range(1, 7):
+            for ex_num in range(1, len(TEST_FILES) + 1):
                 ex_name = f"exercice{ex_num}.py"
                 test_name = TEST_FILES[ex_num - 1] if ex_num - 1 < len(TEST_FILES) else None
                 max_points = EXERCISE_POINTS.get(ex_num, 0)
@@ -288,8 +349,8 @@ def main():
                     grade_lines.append(f"   exécution: {run_awarded:.2f}, tests: {test_awarded:.2f}, manuel: {manual_awarded:.2f} => {awarded:.2f}/{max_points}\n")
                     continue
 
-                # 4.a) Vérification syntaxe / exécution tolérante input
-                script_path = os.path.join(workdir, ex_name)
+                # 4.a) Vérification syntaxe / exécution tolérante input (dans le dossier de l'étudiant)
+                script_path = os.path.join(student_code_folder, ex_name)
                 run_res = run_student_script_syntax_and_input_tolerant(script_path, timeout=TIMEOUT_PER_RUN)
                 if run_res["ran_ok"]:
                     run_awarded = RUN_WEIGHT * max_points
@@ -302,9 +363,9 @@ def main():
                 # 4.b) Exécuter les tests (si le fichier de test existe)
                 test_awarded = 0.0
                 if test_name:
-                    test_path_in_workdir = os.path.join(workdir, test_name)
-                    if os.path.exists(test_path_in_workdir):
-                        test_res = run_pytest_on_testfile(test_name, cwd=workdir, timeout=TIMEOUT_PER_TEST)
+                    test_path_in_student = os.path.join(student_code_folder, test_name)
+                    if os.path.exists(test_path_in_student):
+                        test_res = run_pytest_on_testfile(test_name, cwd=student_code_folder, timeout=TIMEOUT_PER_TEST)
                         log_lines.append(f"[EX{ex_num}] Sortie stdout des tests :\n{test_res['stdout']}\n")
                         log_lines.append(f"[EX{ex_num}] Sortie stderr des tests :\n{test_res['stderr']}\n")
                         # calculer fraction de tests passés
@@ -329,7 +390,7 @@ def main():
                 # 4.d) Somme pour cet exercice
                 awarded = run_awarded + test_awarded + manual_awarded
                 total_score += awarded
-                grade_lines.append(f"\n - Qualité du code et commentaires du code (attribuée) : {manual_awarded:.2f}")
+                grade_lines.append(f"\n - Qualité du code et commentaires du code (attribué) : {manual_awarded:.2f}")
                 grade_lines.append(f"\n => Exercice {ex_num} total attribué : {awarded:.2f}/{max_points}\n")
 
             # synthèse globale
@@ -343,18 +404,27 @@ def main():
                     f.write("\n".join(log_lines))
                 with open(grade_path, "w", encoding="utf-8") as f:
                     f.write("\n".join(grade_lines))
-                print(f"Écrit log -> {log_path}, note -> {grade_path}")
+                #print(f"Écrit log -> {log_path}, note -> {grade_path}")
             except Exception as e:
                 print(f"Échec écriture log/note dans {extract_to} : {e}")
 
-            # 6) nettoyage du dossier de travail si demandé
-            if CLEANUP_WORKDIR:
-                try:
-                    shutil.rmtree(workdir)
-                except Exception:
-                    pass
-            else:
-                print(f"Dossier de travail conservé pour inspection : {workdir}")
+            # écrire dans le CSV (uniquement la note finale)
+            try:
+                with open(CSV_FILE, "a", newline='', encoding="utf-8") as csvfile:
+                    csvwriter = csv.writer(csvfile)
+                    student_ids = find_student_ids(folder2)
+                    for student_id in student_ids:
+                        csvwriter.writerow([student_id, f"{total_score:.2f}"])
+                    if not student_ids:
+                        print(f"Aucun numéro d'étudiant trouvé dans le nom du dossier {folder2} pour le CSV.")
+            except Exception as e:
+                print(f"Échec écriture dans le CSV {CSV_FILE} : {e}")
+
+    print("Correction terminée.")
+            
+
+
+            
             
 
 # Si exécution directe :
