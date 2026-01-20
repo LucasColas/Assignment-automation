@@ -11,8 +11,8 @@ import sys
 
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # dossier contenant les zip des étudiants
-PATH_TEST_CASES_DIR = "test_cases"          # dossier contenant vos exerciceN_tests.py
+PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # chemin du dossier contenant les zip des étudiants
+PATH_TEST_CASES_DIR = "test_cases"          # chemin du dossier contenant vos exerciceN_tests.py
 
 TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
 TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
@@ -27,14 +27,11 @@ EXERCISE_POINTS = {
 }
 
 DATA_FOLDER = "data"  # dossier contenant les fichiers de données supplémentaires (si nécessaires) aux tests / scripts python
-
 CSV_FILE = "notes_TP3.csv" 
 
 # Pour avoir les matricules selon les noms des groupes (optionnel)
 # Utile (pour le CSV) si on on a besoin de toujours associer une remise à un étudiant même si le zip n'inclut pas son numéro
-GROUP_NUMBER = {
-    
-}
+GROUP_NUMBER = {}
 
 # Pondérations
 RUN_WEIGHT = 0.25      # 25% pour "le code peut s'exécuter"
@@ -338,12 +335,12 @@ def main():
                 # Vérifier si l'étudiant a fourni le fichier
                 student_has_file = ex_name in student_py_files
                 if not student_has_file:
-                    grade_lines.append(f"\n - Fichier manquant : {ex_name} -> 0/{max_points} (seule la portion manuelle est attribuée ci-dessous)\n")
+                    grade_lines.append(f"\n - Fichier manquant : {ex_name} -> 0/{max_points}\n")
                     log_lines.append(f"[EX{ex_num}] Fichier manquant {ex_name}\n")
                     # exécution et tests = 0 ; portion manuelle donnée
                     run_awarded = 0.0
                     test_awarded = 0.0
-                    manual_awarded = MANUAL_WEIGHT * max_points
+                    manual_awarded = 0
                     awarded = run_awarded + test_awarded + manual_awarded
                     total_score += awarded
                     grade_lines.append(f"   exécution: {run_awarded:.2f}, tests: {test_awarded:.2f}, manuel: {manual_awarded:.2f} => {awarded:.2f}/{max_points}\n")
