@@ -11,7 +11,7 @@ import sys
 
 
 # ----- Configuration: edit these -----
-PATH_ASSIGNMENTS = "INF1005D (20253)-Remise TP3-INF1005D_11L-776043"            # chemin du dossier contenant les zip des étudiants
+PATH_ASSIGNMENTS = "INF1005D (20261)-Remise TP2-INF1005D_03L-852074"            # chemin du dossier contenant les zip des étudiants
 PATH_TEST_CASES_DIR = "test_cases"          # chemin du dossier contenant vos exerciceN_tests.py
 
 TEST_FILES = os.listdir(PATH_TEST_CASES_DIR)
@@ -19,15 +19,16 @@ TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
 #print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 4,
-    2: 4,
+    1: 3,
+    2: 2,
     3: 4,
-    4: 4,
+    4: 3,
     5: 4,
+    6: 4,
 }
 
 DATA_FOLDER = "data"  # dossier contenant les fichiers de données supplémentaires (si nécessaires) aux tests / scripts python
-CSV_FILE = "notes_TP3.csv" 
+CSV_FILE = "notes_TP2.csv" 
 
 # Pour avoir les matricules selon les noms des groupes (optionnel)
 # Utile (pour le CSV) si on on a besoin de toujours associer une remise à un étudiant même si le zip n'inclut pas son numéro
@@ -393,8 +394,13 @@ def main():
             # synthèse globale
             grade_lines.append(f"\nTOTAL : {total_score:.2f} / {total_max:.2f}\n")
 
-            # 5) Écrire log et note dans extract_to
-            log_path = os.path.join(extract_to, "log.txt")
+            # 5) Écrire log dans dossier logs/ et note dans extract_to
+            logs_dir = os.path.join(path_assignments, "logs")
+            os.makedirs(logs_dir, exist_ok=True)
+            
+            student_folder_name = os.path.basename(student_code_folder)
+            log_filename = f"log_{student_folder_name}.txt"
+            log_path = os.path.join(logs_dir, log_filename)
             grade_path = os.path.join(extract_to, "grade.txt")
             try:
                 with open(log_path, "w", encoding="utf-8") as f:
@@ -403,7 +409,7 @@ def main():
                     f.write("\n".join(grade_lines))
                 #print(f"Écrit log -> {log_path}, note -> {grade_path}")
             except Exception as e:
-                print(f"Échec écriture log/note dans {extract_to} : {e}")
+                print(f"Échec écriture log/note : {e}")
 
             # écrire dans le CSV (uniquement la note finale)
             try:
