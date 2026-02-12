@@ -1,0 +1,35 @@
+name: Code Quality
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv
+
+      - name: Install dependencies
+        run: uv sync --dev
+
+      # Step 1: Ruff (Fast checks & errors)
+      - name: Run Ruff (Pass/Fail)
+        run: uv run ruff check .
+
+      # Step 2: Pylint (Calculates a grade /10)
+      - name: Run Pylint (Grading)
+        # --recursive=y searches all folders
+        # --exit-zero ensures the build doesn't crash if the score is < 10
+        run: uv run pylint --recursive=y --exit-zero --ignore=.venv .
