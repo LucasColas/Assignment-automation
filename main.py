@@ -64,8 +64,13 @@ _STDIN_NEWLINES = 1
 def unzip_folder(zip_path, extract_to):
     """Extract a zip file to the specified directory."""
     os.makedirs(extract_to, exist_ok=True)
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_to)
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_to)
+    except zipfile.BadZipFile as e:
+        raise RuntimeError(f"Fichier zip corrompu : {zip_path} : {e}") from e
+    except zipfile.LargeZipFile as e:
+        raise RuntimeError(f"Fichier zip trop grand (Zip64 non supporté) : {zip_path} : {e}") from e
 
 def copy_file(src, dest_dir):
     """Copy a file to the destination directory."""
@@ -92,8 +97,9 @@ def find_first_python_folder(parent_folder):
                     return python_folder
             elif item.endswith(".py"):
                 return parent_folder
-    except (OSError, PermissionError):
-        return None
+    except (OSError, PermissionError) as e:
+        raise RuntimeError(f"Erreur accès dossier {parent_folder} : {e}") from e
+
     return None
 
 def pytest_available(python_exe=PYTHON_EXE):
