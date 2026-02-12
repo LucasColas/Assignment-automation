@@ -1,3 +1,8 @@
+"""
+Automated grading script for student assignments.
+
+This script unzips student submissions, runs tests, and generates grades.
+"""
 import os
 import shutil
 import zipfile
@@ -57,46 +62,54 @@ _STDIN_NEWLINES = 1
 
 
 def unzip_folder(zip_path, extract_to):
+    """Extract a zip file to the specified directory."""
     os.makedirs(extract_to, exist_ok=True)
-    with zipfile.ZipFile(zip_path, 'r') as z:
-        z.extractall(extract_to)
+    try:
+        with zipfile.ZipFile(zip_path, 'r') as z:
+            z.extractall(extract_to)
+    except zipfile.BadZipFile as e:
+        raise RuntimeError(f"Fichier zip corrompu : {zip_path} : {e}") from e
+    except zipfile.LargeZipFile as e:
+        raise RuntimeError(f"Fichier zip trop grand (Zip64 non supporté) : {zip_path} : {e}") from e
 
 def copy_file(src, dest_dir):
+    """Copy a file to the destination directory."""
     os.makedirs(dest_dir, exist_ok=True)
     shutil.copy2(src, dest_dir)
 
 def safe_name(s):
+    """Convert a string to a safe filename by replacing special characters."""
     return "".join(c if c.isalnum() or c in "._-" else "_" for c in s)
 
 
-def find_first_python_folder(parentFolder):
+def find_first_python_folder(parent_folder):
     """
     Parcours récursif pour trouver le premier dossier contenant un fichier .py.
     Retourne le chemin du dossier contenant le .py ou None si aucun trouvé.
     Ignore les dossiers contenant 'MAC' dans le chemin (convention macOS de zip).
     """
     try:
-        for item in os.listdir(parentFolder):
-            itemPath = os.path.join(parentFolder, item)
-            if os.path.isdir(itemPath) and ("MAC" not in itemPath):
-                pythonFolder = find_first_python_folder(itemPath)
-                if pythonFolder:
-                    return pythonFolder
+        for item in os.listdir(parent_folder):
+            item_path = os.path.join(parent_folder, item)
+            if os.path.isdir(item_path) and ("MAC" not in item_path):
+                python_folder = find_first_python_folder(item_path)
+                if python_folder:
+                    return python_folder
             elif item.endswith(".py"):
-                return parentFolder
-    except Exception:
-        return None
+                return parent_folder
+    except (OSError, PermissionError) as e:
+        raise RuntimeError(f"Erreur accès dossier {parent_folder} : {e}") from e
+
     return None
 
 def pytest_available(python_exe=PYTHON_EXE):
+    """Check if pytest is available in the given Python executable."""
     try:
         p = subprocess.run([python_exe, "-m", "pytest", "--version"],
-                           capture_output=True, text=True, timeout=5)
+                           capture_output=True, text=True, timeout=5, check=False)
         return p.returncode == 0
-    except Exception:
+    except (subprocess.TimeoutExpired, OSError):
         return False
-
-TIMEOUT_PER_RUN = 10
 
 def check_syntax(script_path):
     """
@@ -108,11 +121,10 @@ def check_syntax(script_path):
         return True, ""
     except py_compile.PyCompileError as e:
         return False, str(e)
-    except Exception as e:
-        return False, str(e)
+    #except Exception as e:
+    #    return False, str(e)
 
 def run_student_script_syntax_and_input_tolerant(script_path,
-                                                 timeout=TIMEOUT_PER_RUN,
                                                  python_exe=None):
     """
     1) Vérifie la syntaxe (pas d'erreur de compilation).
@@ -166,7 +178,9 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
         cmd = [python_exe, testfile_path]
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout)
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, check=False
+        )
         stdout = proc.stdout or ""
         stderr = proc.stderr or ""
         combined = stdout + "\n" + stderr
@@ -246,6 +260,7 @@ def find_student_ids(folder_name : str):
 
 # ---------------- main ----------------
 def main():
+    """Main function to process student assignments and generate grades."""
     path_assignments = PATH_ASSIGNMENTS
     path_test_cases = PATH_TEST_CASES_DIR
     utils_file = os.path.join(path_test_cases, "utils_ne_pas_supprimer.py")
@@ -281,7 +296,9 @@ def main():
             log_lines = []
             grade_lines = []
             grade_lines.append(f"Correction de la soumission : {folder2}\n")
-            log_lines.append(f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n")
+            log_lines.append(
+                f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n"
+            )
 
             # On exécute désormais les tests directement dans le dossier de l'étudiant.
             # Cherche éventuellement un sous-dossier contenant les .py
@@ -386,9 +403,7 @@ def main():
                 # 4.a) Vérification syntaxe / exécution tolérante input
                 # (dans le dossier de l'étudiant)
                 script_path = os.path.join(student_code_folder, ex_name)
-                run_res = run_student_script_syntax_and_input_tolerant(
-                    script_path, timeout=TIMEOUT_PER_RUN
-                )
+                run_res = run_student_script_syntax_and_input_tolerant(script_path)
                 if run_res["ran_ok"]:
                     run_awarded = RUN_WEIGHT * max_points
                     log_lines.append(
@@ -482,7 +497,7 @@ def main():
                 with open(grade_path, "w", encoding="utf-8") as f:
                     f.write("\n".join(grade_lines))
                 #print(f"Écrit log -> {log_path}, note -> {grade_path}")
-            except Exception as e:
+            except (IOError, OSError) as e:
                 print(f"Échec écriture log/note : {e}")
 
             # écrire dans le CSV (uniquement la note finale)
@@ -493,16 +508,15 @@ def main():
                     for student_id in student_ids:
                         csvwriter.writerow([student_id, f"{total_score:.2f}"])
                     if not student_ids:
-                        print(f"Aucun numéro d'étudiant trouvé dans le nom du dossier {folder2} pour le CSV.")
-            except Exception as e:
+                        print(
+                            f"Aucun numéro d'étudiant trouvé dans le nom du dossier "
+                            f"{folder2} pour le CSV."
+                        )
+            except (IOError, OSError) as e:
                 print(f"Échec écriture dans le CSV {CSV_FILE} : {e}")
 
     print("Correction terminée.")
-            
 
-
-            
-            
 
 # Si exécution directe :
 if __name__ == "__main__":
