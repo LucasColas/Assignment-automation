@@ -13,6 +13,7 @@ from datetime import datetime
 import csv
 import sys
 
+from utils import UnzipError, CopyError
 
 # ----- Configuration: edit these -----
 # chemin du dossier contenant les zip des étudiants
@@ -68,14 +69,17 @@ def unzip_folder(zip_path, extract_to):
         with zipfile.ZipFile(zip_path, 'r') as z:
             z.extractall(extract_to)
     except zipfile.BadZipFile as e:
-        raise RuntimeError(f"Fichier zip corrompu : {zip_path} : {e}") from e
+        raise UnzipError(f"Fichier zip corrompu : {zip_path} : {e}") from e
     except zipfile.LargeZipFile as e:
-        raise RuntimeError(f"Fichier zip trop grand (Zip64 non supporté) : {zip_path} : {e}") from e
+        raise UnzipError(f"Fichier zip trop grand (Zip64 non supporté) : {zip_path} : {e}") from e
 
 def copy_file(src, dest_dir):
     """Copy a file to the destination directory."""
-    os.makedirs(dest_dir, exist_ok=True)
-    shutil.copy2(src, dest_dir)
+    try:
+        os.makedirs(dest_dir, exist_ok=True)
+        shutil.copy2(src, dest_dir)
+    except (IOError, OSError) as e:
+        raise CopyError(f"Erreur copie fichier {src} -> {dest_dir} : {e}") from e
 
 def safe_name(s):
     """Convert a string to a safe filename by replacing special characters."""
@@ -242,7 +246,7 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
             "stderr": f"TIMEOUT after {timeout}s",
             "passed": 0, "failed": 0, "skipped": 0, "total": 0
         }
-    except Exception as e:
+    except (OSError, subprocess.SubprocessError) as e:
         return {
             "ok": False, "returncode": None, "stdout": "",
             "stderr": f"Failed to run tests: {e}",
@@ -288,7 +292,7 @@ def main():
             try:
                 unzip_folder(zip_file_path, extract_to)
                 print(f"Décompressé {zip_file_path} -> {extract_to}")
-            except Exception as e:
+            except UnzipError as e:
                 print(f"Échec de la décompression {zip_file_path} : {e}")
                 continue
 
@@ -308,13 +312,14 @@ def main():
             log_lines.append(
                 f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n"
             )
+
             try:
                 for item in os.listdir(student_code_folder):
                     if item.endswith(".py"):
                         # On enregistre la présence du fichier, sans le copier ailleurs
                         student_py_files.append(item)
                         log_lines.append(f"Trouvé fichier étudiant : {item}\n")
-            except Exception as e:
+            except (OSError, PermissionError) as e:
                 log_lines.append(f"Échec lecture du dossier étudiant {student_code_folder} : {e}\n")
 
             # 3) copier les fichiers de tests dans le dossier de l'étudiant
@@ -327,7 +332,7 @@ def main():
                         log_lines.append(
                             f"Copié fichier de test dans le dossier étudiant : {testfile}\n"
                         )
-                    except Exception as e:
+                    except CopyError as e:
                         log_lines.append(
                             f"Échec copie test {testfile} -> {student_code_folder} : {e}\n"
                         )
@@ -343,7 +348,7 @@ def main():
                     log_lines.append(
                         "Copié utils_ne_pas_supprimer.py dans le dossier étudiant.\n"
                     )
-                except Exception as e:
+                except CopyError as e:
                     log_lines.append(f"Échec copie utils -> {student_code_folder} : {e}\n")
 
             # ajout les dossiers ou fichiers de données nécessaires
@@ -365,7 +370,7 @@ def main():
                         log_lines.append(
                             f"Copié donnée nécessaire {data} dans le dossier étudiant.\n"
                         )
-                    except Exception as e:
+                    except (IOError, OSError) as e:
                         log_lines.append(
                             f"Échec copie donnée {data} -> {student_code_folder} : {e}\n"
                         )
