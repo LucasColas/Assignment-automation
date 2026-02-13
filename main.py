@@ -215,6 +215,54 @@ def parse_unittest_output(combined):
     return passed, failed
 
 
+def _execute_test_command(cmd, cwd, timeout):
+    """Execute test command and return process result."""
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, check=False
+        )
+        return {
+            "success": True,
+            "stdout": proc.stdout or "",
+            "stderr": proc.stderr or "",
+            "returncode": proc.returncode
+        }
+    except subprocess.TimeoutExpired as e:
+        return {
+            "success": False,
+            "stdout": getattr(e, "stdout", "") or "",
+            "stderr": f"TIMEOUT after {timeout}s",
+            "returncode": None
+        }
+    except (OSError, subprocess.SubprocessError) as e:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": f"Failed to run tests: {e}",
+            "returncode": None
+        }
+
+
+def _parse_test_counts(combined, returncode):
+    """Parse test output and return test counts."""
+    # Try pytest-style parsing
+    passed, failed, skipped = parse_pytest_output(combined)
+    total = passed + failed
+
+    # Try unittest-style parsing if pytest didn't find anything
+    if total == 0:
+        passed, failed = parse_unittest_output(combined)
+        total = passed + failed
+
+    # Fallback heuristic
+    if total == 0 and returncode == 0 and combined.strip():
+        passed = 1
+        total = 1
+        skipped = 0
+
+    return passed, failed, skipped, total
+
+
 def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_exe=PYTHON_EXE):
     """
     Exécute pytest (ou le fichier de test directement).
@@ -228,52 +276,33 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
     else:
         cmd = [python_exe, testfile_path]
 
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, check=False
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        combined = stdout + "\n" + stderr
+    result = _execute_test_command(cmd, cwd, timeout)
 
-        # Try pytest-style parsing
-        passed, failed, skipped = parse_pytest_output(combined)
-        total = passed + failed
-
-        # Try unittest-style parsing if pytest didn't find anything
-        if total == 0:
-            passed, failed = parse_unittest_output(combined)
-            total = passed + failed
-
-        # Fallback heuristic
-        if total == 0 and proc.returncode == 0 and combined.strip():
-            passed = 1
-            total = 1
-
-        ok = proc.returncode == 0
+    if not result["success"]:
         return {
-            "ok": ok,
-            "returncode": proc.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-            "passed": passed,
-            "failed": failed,
-            "skipped": skipped,
-            "total": total
+            "ok": False,
+            "returncode": result["returncode"],
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "total": 0
         }
-    except subprocess.TimeoutExpired as e:
-        return {
-            "ok": False, "returncode": None,
-            "stdout": getattr(e, "stdout", "") or "",
-            "stderr": f"TIMEOUT after {timeout}s",
-            "passed": 0, "failed": 0, "skipped": 0, "total": 0
-        }
-    except (OSError, subprocess.SubprocessError) as e:
-        return {
-            "ok": False, "returncode": None, "stdout": "",
-            "stderr": f"Failed to run tests: {e}",
-            "passed": 0, "failed": 0, "skipped": 0, "total": 0
-        }
+
+    combined = result["stdout"] + "\n" + result["stderr"]
+    passed, failed, skipped, total = _parse_test_counts(combined, result["returncode"])
+
+    return {
+        "ok": result["returncode"] == 0,
+        "returncode": result["returncode"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "total": total
+    }
 
 
 def find_student_ids(folder_name : str):
