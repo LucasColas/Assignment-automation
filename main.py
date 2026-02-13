@@ -57,7 +57,7 @@ CLEANUP_WORKDIR = False  # False pour garder les dossiers temporaires (débogage
 
 _STDIN_NEWLINES = 1
 
-# if the csv file already exists, overwrite it 
+# if the csv file already exists, overwrite it
 if os.path.exists(CSV_FILE):
     try:
         os.remove(CSV_FILE)
@@ -175,6 +175,46 @@ def run_student_script_syntax_and_input_tolerant(script_path,
         "stderr": "",
     }
 
+
+def parse_pytest_output(combined):
+    """Parse pytest-style output for test counts."""
+    passed = 0
+    failed = 0
+    skipped = 0
+
+    m_pass = re.search(r"(\d+)\s+passed", combined)
+    m_failed = re.search(r"(\d+)\s+failed", combined)
+    m_skipped = re.search(r"(\d+)\s+skipped", combined)
+
+    if m_pass:
+        passed = int(m_pass.group(1))
+    if m_failed:
+        failed = int(m_failed.group(1))
+    if m_skipped:
+        skipped = int(m_skipped.group(1))
+
+    return passed, failed, skipped
+
+
+def parse_unittest_output(combined):
+    """Parse unittest-style output for test counts."""
+    m_ran = re.search(r"Ran\s+(\d+)\s+tests?", combined)
+    if not m_ran:
+        return 0, 0
+
+    total = int(m_ran.group(1))
+    if re.search(r"\bOK\b", combined):
+        return total, 0
+
+    m_failures = re.search(r"failures?=(\d+)", combined)
+    m_errors = re.search(r"errors?=(\d+)", combined)
+    f = int(m_failures.group(1)) if m_failures else 0
+    e = int(m_errors.group(1)) if m_errors else 0
+    failed = f + e
+    passed = max(0, total - failed)
+    return passed, failed
+
+
 def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_exe=PYTHON_EXE):
     """
     Exécute pytest (ou le fichier de test directement).
@@ -196,44 +236,19 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
         stderr = proc.stderr or ""
         combined = stdout + "\n" + stderr
 
-        passed = 0
-        failed = 0
-        skipped = 0
-        total = 0
-
-        # 1) style pytest : "X passed", "Y failed", "Z skipped"
-        m_pass = re.search(r"(\d+)\s+passed", combined)
-        m_failed = re.search(r"(\d+)\s+failed", combined)
-        m_skipped = re.search(r"(\d+)\s+skipped", combined)
-        if m_pass:
-            passed = int(m_pass.group(1))
-        if m_failed:
-            failed = int(m_failed.group(1))
-        if m_skipped:
-            skipped = int(m_skipped.group(1))
+        # Try pytest-style parsing
+        passed, failed, skipped = parse_pytest_output(combined)
         total = passed + failed
 
-        # 2) style unittest : "Ran N tests in ...\n\nOK" ou "FAILED (failures=1, errors=0)"
+        # Try unittest-style parsing if pytest didn't find anything
         if total == 0:
-            m_ran = re.search(r"Ran\s+(\d+)\s+tests?", combined)
-            if m_ran:
-                total = int(m_ran.group(1))
-                if re.search(r"\bOK\b", combined):
-                    passed = total
-                    failed = 0
-                else:
-                    m_failures = re.search(r"failures?=(\d+)", combined)
-                    m_errors = re.search(r"errors?=(\d+)", combined)
-                    f = int(m_failures.group(1)) if m_failures else 0
-                    e = int(m_errors.group(1)) if m_errors else 0
-                    failed = f + e
-                    passed = max(0, total - failed)
+            passed, failed = parse_unittest_output(combined)
+            total = passed + failed
 
-        # 3) heuristique fallback
-        if total == 0:
-            if proc.returncode == 0 and combined.strip():
-                passed = 1
-                total = 1
+        # Fallback heuristic
+        if total == 0 and proc.returncode == 0 and combined.strip():
+            passed = 1
+            total = 1
 
         ok = proc.returncode == 0
         return {
@@ -469,7 +484,6 @@ def save_results(path_assignments, extract_to, student_code_folder, folder2,
 
     # Write to CSV
     try:
-         
         with open(CSV_FILE, "a", newline='', encoding="utf-8") as csvfile:
             csvwriter = csv.writer(csvfile)
             student_ids = find_student_ids(folder2)
