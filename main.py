@@ -17,7 +17,7 @@ from utils import UnzipError, CopyError
 
 # ----- Configuration: edit these -----
 # chemin du dossier contenant les zip des étudiants
-PATH_ASSIGNMENTS = "INF1005D (20261)-Remise TP2-INF1005D_03L-852074"
+PATH_ASSIGNMENTS = "INF1005D (20261)-Remise TP3-INF1005D_03L-852078"
 # chemin du dossier contenant vos exerciceN_tests.py
 PATH_TEST_CASES_DIR = "test_cases"
 
@@ -26,18 +26,18 @@ TEST_FILES = [f for f in TEST_FILES if "test" in f and f.endswith(".py")]
 #print("Fichiers de test détectés : ", TEST_FILES)
 # Points par exercice
 EXERCISE_POINTS = {
-    1: 3,
-    2: 2,
+    1: 4,
+    2: 4,
     3: 4,
-    4: 3,
+    4: 4,
     5: 4,
-    6: 4,
+
 }
 
 # dossier contenant les fichiers de données supplémentaires
 # (si nécessaires) aux tests / scripts python
 DATA_FOLDER = "data"
-CSV_FILE = "notes_TP2.csv"
+CSV_FILE = "notes_TP3.csv"
 
 # Pour avoir les matricules selon les noms des groupes (optionnel)
 # Utile (pour le CSV) si on a besoin de toujours associer
@@ -215,6 +215,54 @@ def parse_unittest_output(combined):
     return passed, failed
 
 
+def _execute_test_command(cmd, cwd, timeout):
+    """Execute test command and return process result."""
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, check=False
+        )
+        return {
+            "success": True,
+            "stdout": proc.stdout or "",
+            "stderr": proc.stderr or "",
+            "returncode": proc.returncode
+        }
+    except subprocess.TimeoutExpired as e:
+        return {
+            "success": False,
+            "stdout": getattr(e, "stdout", "") or "",
+            "stderr": f"TIMEOUT after {timeout}s",
+            "returncode": None
+        }
+    except (OSError, subprocess.SubprocessError) as e:
+        return {
+            "success": False,
+            "stdout": "",
+            "stderr": f"Failed to run tests: {e}",
+            "returncode": None
+        }
+
+
+def _parse_test_counts(combined, returncode):
+    """Parse test output and return test counts."""
+    # Try pytest-style parsing
+    passed, failed, skipped = parse_pytest_output(combined)
+    total = passed + failed
+
+    # Try unittest-style parsing if pytest didn't find anything
+    if total == 0:
+        passed, failed = parse_unittest_output(combined)
+        total = passed + failed
+
+    # Fallback heuristic
+    if total == 0 and returncode == 0 and combined.strip():
+        passed = 1
+        total = 1
+        skipped = 0
+
+    return passed, failed, skipped, total
+
+
 def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_exe=PYTHON_EXE):
     """
     Exécute pytest (ou le fichier de test directement).
@@ -228,61 +276,84 @@ def run_pytest_on_testfile(testfile_path, cwd, timeout=TIMEOUT_PER_TEST, python_
     else:
         cmd = [python_exe, testfile_path]
 
-    try:
-        proc = subprocess.run(
-            cmd, capture_output=True, text=True, cwd=cwd, timeout=timeout, check=False
-        )
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
-        combined = stdout + "\n" + stderr
+    result = _execute_test_command(cmd, cwd, timeout)
 
-        # Try pytest-style parsing
-        passed, failed, skipped = parse_pytest_output(combined)
-        total = passed + failed
-
-        # Try unittest-style parsing if pytest didn't find anything
-        if total == 0:
-            passed, failed = parse_unittest_output(combined)
-            total = passed + failed
-
-        # Fallback heuristic
-        if total == 0 and proc.returncode == 0 and combined.strip():
-            passed = 1
-            total = 1
-
-        ok = proc.returncode == 0
+    if not result["success"]:
         return {
-            "ok": ok,
-            "returncode": proc.returncode,
-            "stdout": stdout,
-            "stderr": stderr,
-            "passed": passed,
-            "failed": failed,
-            "skipped": skipped,
-            "total": total
-        }
-    except subprocess.TimeoutExpired as e:
-        return {
-            "ok": False, "returncode": None,
-            "stdout": getattr(e, "stdout", "") or "",
-            "stderr": f"TIMEOUT after {timeout}s",
-            "passed": 0, "failed": 0, "skipped": 0, "total": 0
-        }
-    except (OSError, subprocess.SubprocessError) as e:
-        return {
-            "ok": False, "returncode": None, "stdout": "",
-            "stderr": f"Failed to run tests: {e}",
-            "passed": 0, "failed": 0, "skipped": 0, "total": 0
+            "ok": False,
+            "returncode": result["returncode"],
+            "stdout": result["stdout"],
+            "stderr": result["stderr"],
+            "passed": 0,
+            "failed": 0,
+            "skipped": 0,
+            "total": 0
         }
 
+    combined = result["stdout"] + "\n" + result["stderr"]
+    passed, failed, skipped, total = _parse_test_counts(combined, result["returncode"])
 
-def find_student_ids(folder_name : str):
+    return {
+        "ok": result["returncode"] == 0,
+        "returncode": result["returncode"],
+        "stdout": result["stdout"],
+        "stderr": result["stderr"],
+        "passed": passed,
+        "failed": failed,
+        "skipped": skipped,
+        "total": total
+    }
+
+
+def find_student_ids(folder_name: str):
     """
     Extrait les numéros (matricules) d'un nom de dossier.
     Retourne une liste d'entiers.
     """
     numbers = re.findall(r'(\d{7})', folder_name)
     return [int(num) for num in numbers]
+
+
+def find_student_ids_in_python_files(student_code_folder, student_py_files, log_lines):
+    """Extract student IDs from the contents of student Python files."""
+    ids = set()
+    for py_file in student_py_files:
+        py_path = os.path.join(student_code_folder, py_file)
+        try:
+            with open(py_path, "r", encoding="utf-8", errors="ignore") as file:
+                content = file.read()
+            matches = re.findall(r'(\d{7})', content)
+            for match in matches:
+                ids.add(int(match))
+        except (IOError, OSError) as error:
+            log_lines.append(
+                f"Échec lecture du fichier {py_file} pour extraction des matricules : "
+                f"{error}\n"
+            )
+    return sorted(ids)
+
+
+def resolve_student_ids(folder2, extract_to, student_code_folder, log_lines):
+    """Resolve student IDs from folder names/paths, then Python files as fallback."""
+    ids = set()
+    candidate_sources = [
+        folder2,
+        os.path.basename(folder2),
+        extract_to,
+        os.path.basename(extract_to),
+        student_code_folder,
+        os.path.basename(student_code_folder),
+    ]
+
+    for source in candidate_sources:
+        ids.update(find_student_ids(source))
+
+    if ids:
+        log_lines.append(f"Matricules trouvés dans les noms de dossiers : {sorted(ids)}\n")
+        return ids
+
+    print("Aucun matricule trouvé dans les noms de dossiers...")
+    return []
 
 
 def collect_student_files(student_code_folder, log_lines):
@@ -359,6 +430,70 @@ def copy_data_files(student_code_folder, log_lines):
             )
 
 
+def _check_execution(ex_num, script_path, max_points, log_lines, grade_lines):
+    """Check syntax/execution and return awarded points and execution result."""
+    run_res = run_student_script_syntax_and_input_tolerant(script_path)
+    if run_res["ran_ok"]:
+        run_awarded = RUN_WEIGHT * max_points
+        log_lines.append(
+            f"[EX{ex_num}] Vérification exécution OK "
+            f"(returncode {run_res['returncode']}).\n"
+        )
+    else:
+        run_awarded = 0.0
+        log_lines.append(
+            f"[EX{ex_num}] Vérification exécution ÉCHEC. "
+            f"returncode={run_res['returncode']}; stderr:\n{run_res['stderr']}\n"
+        )
+    grade_lines.append(
+        f"\n - Vérification exécution : "
+        f"{'OK' if run_res['ran_ok'] else 'ÉCHEC'} "
+        f"(attribué {run_awarded:.2f}/{RUN_WEIGHT*max_points:.2f})"
+    )
+    return run_awarded, run_res
+
+
+def _run_tests(ex_num, test_name, student_code_folder, max_points, logs):
+    """Run tests for an exercise and return awarded points."""
+    log_lines, grade_lines = logs["log_lines"], logs["grade_lines"]
+
+    if not test_name:
+        log_lines.append(
+            f"[EX{ex_num}] Pas de mapping de test pour l'exercice {ex_num} ; "
+            f"0 pour les tests.\n"
+        )
+        grade_lines.append("\n - Tests : pas de mapping (0 attribué)")
+        return 0.0
+
+    test_path_in_student = os.path.join(student_code_folder, test_name)
+    if not os.path.exists(test_path_in_student):
+        log_lines.append(
+            f"[EX{ex_num}] Pas de fichier de test {test_name} dans workdir ; "
+            f"0 pour les tests.\n"
+        )
+        grade_lines.append("\n - Tests : fichier de test absent (0 attribué)")
+        return 0.0
+
+    test_res = run_pytest_on_testfile(
+        test_name, cwd=student_code_folder, timeout=TIMEOUT_PER_TEST
+    )
+    log_lines.append(
+        f"[EX{ex_num}] Sortie stderr des tests :\n{test_res['stderr']}\n"
+    )
+
+    fraction = test_res["passed"] / test_res["total"] if test_res["total"] > 0 else (
+        1.0 if test_res["ok"] else 0.0
+    )
+    test_awarded = TEST_WEIGHT * max_points * fraction
+    grade_lines.append(
+        f"\n - Tests : {test_res['passed']}/{test_res['total']} réussis -> "
+        f"attribué {test_awarded:.2f}/{TEST_WEIGHT*max_points:.2f}"
+    )
+    log_lines.append(
+        f"[Exercice{ex_num}] parsed: passed={test_res['passed']}, "
+        f"failed={test_res['failed']}, total={test_res['total']}\n"
+    )
+    return test_awarded
 def grade_exercise(ex_num, student_code_folder, student_py_files, log_lines, grade_lines):
     """Grade a single exercise and return the score awarded."""
     ex_name = f"exercice{ex_num}.py"
@@ -380,64 +515,15 @@ def grade_exercise(ex_num, student_code_folder, student_py_files, log_lines, gra
 
     # Check syntax/execution
     script_path = os.path.join(student_code_folder, ex_name)
-    run_res = run_student_script_syntax_and_input_tolerant(script_path)
-    if run_res["ran_ok"]:
-        run_awarded = RUN_WEIGHT * max_points
-        log_lines.append(
-            f"[EX{ex_num}] Vérification exécution OK "
-            f"(returncode {run_res['returncode']}).\n"
-        )
-    else:
-        run_awarded = 0.0
-        log_lines.append(
-            f"[EX{ex_num}] Vérification exécution ÉCHEC. "
-            f"returncode={run_res['returncode']}; stderr:\n{run_res['stderr']}\n"
-        )
-    grade_lines.append(
-        f"\n - Vérification exécution : "
-        f"{'OK' if run_res['ran_ok'] else 'ÉCHEC'} "
-        f"(attribué {run_awarded:.2f}/{RUN_WEIGHT*max_points:.2f})"
+    run_awarded, run_res = _check_execution(
+        ex_num, script_path, max_points, log_lines, grade_lines
     )
 
     # Run tests
-    test_awarded = 0.0
-    if test_name:
-        test_path_in_student = os.path.join(student_code_folder, test_name)
-        if os.path.exists(test_path_in_student):
-            test_res = run_pytest_on_testfile(
-                test_name, cwd=student_code_folder, timeout=TIMEOUT_PER_TEST
-            )
-            log_lines.append(
-                f"[EX{ex_num}] Sortie stdout des tests :\n{test_res['stdout']}\n"
-            )
-            log_lines.append(
-                f"[EX{ex_num}] Sortie stderr des tests :\n{test_res['stderr']}\n"
-            )
-            if test_res["total"] > 0:
-                fraction = test_res["passed"] / test_res["total"]
-            else:
-                fraction = 1.0 if test_res["ok"] else 0.0
-            test_awarded = TEST_WEIGHT * max_points * fraction
-            grade_lines.append(
-                f"\n - Tests : {test_res['passed']}/{test_res['total']} réussis -> "
-                f"attribué {test_awarded:.2f}/{TEST_WEIGHT*max_points:.2f}"
-            )
-            log_lines.append(
-                f"[Exercice{ex_num}] parsed: passed={test_res['passed']}, "
-                f"failed={test_res['failed']}, total={test_res['total']}\n"
-            )
-        else:
-            log_lines.append(
-                f"[EX{ex_num}] Pas de fichier de test {test_name} dans workdir ; "
-                f"0 pour les tests.\n"
-            )
-            grade_lines.append("\n - Tests : fichier de test absent (0 attribué)")
-    else:
-        log_lines.append(
-            f"[EX{ex_num}] Pas de mapping de test pour l'exercice {ex_num} ; "
-            f"0 pour les tests.\n"
-        )
-        grade_lines.append("\n - Tests : pas de mapping (0 attribué)")
+    logs = {"log_lines": log_lines, "grade_lines": grade_lines}
+    test_awarded = _run_tests(
+        ex_num, test_name, student_code_folder, max_points, logs
+    )
 
     # Manual portion - only award if code compiles
     if run_res["ran_ok"]:
@@ -462,16 +548,13 @@ def grade_exercise(ex_num, student_code_folder, student_py_files, log_lines, gra
     return awarded, max_points
 
 
-def save_results(path_assignments, extract_to, student_code_folder, folder2,
-                 log_lines, grade_lines, total_score):
-    """Save log and grade files, and write to CSV."""
-    # Save log and grade files
+def _write_log_files(path_assignments, extract_to, student_code_folder, log_lines, grade_lines):
+    """Write log and grade files to disk."""
     logs_dir = os.path.join(path_assignments, "logs")
     os.makedirs(logs_dir, exist_ok=True)
 
     student_folder_name = os.path.basename(student_code_folder)
-    log_filename = f"log_{student_folder_name}.txt"
-    log_path = os.path.join(logs_dir, log_filename)
+    log_path = os.path.join(logs_dir, f"log_{student_folder_name}.txt")
     grade_path = os.path.join(extract_to, "grade.txt")
 
     try:
@@ -482,11 +565,12 @@ def save_results(path_assignments, extract_to, student_code_folder, folder2,
     except (IOError, OSError) as e:
         print(f"Échec écriture log/note : {e}")
 
-    # Write to CSV
+
+def _write_csv_entry(student_ids, folder2, total_score):
+    """Write a CSV entry for the graded submission."""
     try:
         with open(CSV_FILE, "a", newline='', encoding="utf-8") as csvfile:
             csvwriter = csv.writer(csvfile)
-            student_ids = find_student_ids(folder2)
             for student_id in student_ids:
                 csvwriter.writerow([student_id, f"{total_score:.2f}"])
             if not student_ids:
@@ -498,10 +582,44 @@ def save_results(path_assignments, extract_to, student_code_folder, folder2,
         print(f"Échec écriture dans le CSV {CSV_FILE} : {e}")
 
 
+def save_results(paths, logs, folder2, total_score, student_ids):
+    """Save log and grade files, and write to CSV."""
+    _write_log_files(
+        paths["assignments"], paths["extract"], paths["student"],
+        logs["log_lines"], logs["grade_lines"]
+    )
+    _write_csv_entry(student_ids, folder2, total_score)
+
+
+def _initialize_submission(folder2):
+    """Initialize log and grade lines for a submission."""
+    log_lines = []
+    grade_lines = []
+    grade_lines.append(f"Correction de la soumission : {folder2}\n")
+    log_lines.append(
+        f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n"
+    )
+    return log_lines, grade_lines
+
+
+def _setup_student_environment(extract_to, path_test_cases, log_lines):
+    """Find student code folder and set up test environment."""
+    student_code_folder = find_first_python_folder(extract_to) or extract_to
+    log_lines.append(
+        f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n"
+    )
+
+    student_py_files = collect_student_files(student_code_folder, log_lines)
+    utils_file = os.path.join(path_test_cases, "utils_ne_pas_supprimer.py")
+    copy_test_files(student_code_folder, path_test_cases, utils_file, log_lines)
+    copy_data_files(student_code_folder, log_lines)
+
+    return student_code_folder, student_py_files
+
+
 def process_submission(zip_file_path, folder_path, folder2, path_assignments, path_test_cases):
     """Process a single student submission."""
     extract_to = os.path.join(folder_path, folder2[:-4])
-    utils_file = os.path.join(path_test_cases, "utils_ne_pas_supprimer.py")
 
     # Unzip
     try:
@@ -511,50 +629,42 @@ def process_submission(zip_file_path, folder_path, folder2, path_assignments, pa
         print(f"Échec de la décompression {zip_file_path} : {e}")
         return
 
-    # Initialize log and grade accumulators
-    log_lines = []
-    grade_lines = []
-    grade_lines.append(f"Correction de la soumission : {folder2}\n")
-    log_lines.append(
-        f"Log pour la soumission {folder2} (créé {datetime.now().isoformat()}):\n"
+    # Initialize
+    log_lines, grade_lines = _initialize_submission(folder2)
+
+    # Setup environment
+    student_code_folder, student_py_files = _setup_student_environment(
+        extract_to, path_test_cases, log_lines
     )
-
-    # Find student code folder
-    student_code_folder = find_first_python_folder(extract_to) or extract_to
-    log_lines.append(
-        f"Dossier de code étudiant choisi pour l'exécution : {student_code_folder}\n"
-    )
-
-    # Collect student files
-    student_py_files = collect_student_files(student_code_folder, log_lines)
-
-    # Copy test files and data
-    copy_test_files(student_code_folder, path_test_cases, utils_file, log_lines)
-    copy_data_files(student_code_folder, log_lines)
 
     # Grade all exercises
     total_score = 0.0
-    total_max = 0.0
 
     for ex_num in range(1, len(TEST_FILES) + 1):
-        awarded, max_points = grade_exercise(
+        total_score += grade_exercise(
             ex_num, student_code_folder, student_py_files, log_lines, grade_lines
-        )
-        total_score += awarded
-        total_max += max_points
+        )[0]
 
     # Add total summary
+    total_max = sum(EXERCISE_POINTS.get(i, 0) for i in range(1, len(TEST_FILES) + 1))
     grade_lines.append(f"\nTOTAL : {total_score:.2f} / {total_max:.2f}\n")
 
-    # Save results
-    save_results(
-        path_assignments, extract_to, student_code_folder,
-        folder2, log_lines, grade_lines, total_score
+    student_ids = resolve_student_ids(
+        folder2, extract_to, student_code_folder, log_lines
     )
 
+    # Save results
+    paths = {
+        "assignments": path_assignments,
+        "extract": extract_to,
+        "student": student_code_folder
+    }
+    logs = {"log_lines": log_lines, "grade_lines": grade_lines}
+    save_results(paths, logs, folder2, total_score, student_ids)
+
 
 # ---------------- main ----------------
-# ---------------- main ----------------
+
 def main():
     """Main function to process student assignments and generate grades."""
     path_assignments = PATH_ASSIGNMENTS
