@@ -15,9 +15,6 @@ import sys
 
 from utils import UnzipError, CopyError
 
-# TODO 
-# allow the possibility to just run the tests (not decompress)
-
 # ----- Configuration: edit these -----
 # chemin du dossier contenant les zip des étudiants
 PATH_ASSIGNMENTS = "INF1005D (20261)-Remise TP3-INF1005D_03L-852078"
@@ -336,7 +333,7 @@ def find_student_ids_in_python_files(student_code_folder, student_py_files, log_
     return sorted(ids)
 
 
-def resolve_student_ids(folder2, extract_to, student_code_folder, student_py_files, log_lines):
+def resolve_student_ids(folder2, extract_to, student_code_folder, log_lines):
     """Resolve student IDs from folder names/paths, then Python files as fallback."""
     ids = set()
     candidate_sources = [
@@ -653,7 +650,7 @@ def process_submission(zip_file_path, folder_path, folder2, path_assignments, pa
     grade_lines.append(f"\nTOTAL : {total_score:.2f} / {total_max:.2f}\n")
 
     student_ids = resolve_student_ids(
-        folder2, extract_to, student_code_folder, student_py_files, log_lines
+        folder2, extract_to, student_code_folder, log_lines
     )
 
     # Save results

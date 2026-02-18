@@ -1,0 +1,1 @@
+Allow to just run the files (without decompression first)
